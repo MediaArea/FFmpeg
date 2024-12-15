@@ -31,8 +31,8 @@ static const uint8_t encoded_samples_mul[] = { 1, 2, 0, 0 };
 static const uint8_t encoded_quantization[] = { 16, 12, 0, 0 };
 static const uint8_t encoded_chans[] = { 2, 4, 0, 0 };
 static const enum AVCodecID encoded_codec[] = {
-    AV_CODEC_ID_PCM_S16LE,
-    AV_CODEC_ID_NONE, AV_CODEC_ID_NONE, AV_CODEC_ID_NONE,
+    AV_CODEC_ID_PCM_S16LE, AV_CODEC_ID_PCM_DAT,
+    AV_CODEC_ID_NONE, AV_CODEC_ID_NONE,
 };
 
 static int valid_frame(uint8_t *frame)
