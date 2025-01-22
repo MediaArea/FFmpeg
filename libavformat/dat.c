@@ -26,8 +26,9 @@
 #define DAT_PACKET_SIZE 5822
 #define DAT_OFFSET 5760
 
-static const uint32_t encoded_rate[] = { 48000, 44100, 32000, 0 };
-static const uint16_t encoded_size[] = { 5760, 5292, 3840, 0 };
+static const uint16_t encoded_samples[] = { 1440, 1323, 960, 0 };
+static const uint8_t encoded_samples_mul[] = { 1, 2, 0, 0 };
+static const uint8_t encoded_quantization[] = { 16, 12, 0, 0 };
 static const uint8_t encoded_chans[] = { 2, 4, 0, 0 };
 static const enum AVCodecID encoded_codec[] = {
     AV_CODEC_ID_PCM_S16LE,
@@ -41,12 +42,26 @@ static int valid_frame(uint8_t *frame)
     uint8_t *mainid = subid+4;
     int chan_index = (mainid[0] >> 0) & 0x3;
     int rate_index = (mainid[0] >> 2) & 0x3;
+    int fmtid      = (mainid[0] >> 6) & 0x3;
+    int trackpitch = (mainid[1] >> 2) & 0x3;
     int enc_index  = (mainid[1] >> 6) & 0x3;
     int dataid     = (subid[0] >> 0) & 0xf;
-
-    if (dataid != 0 || encoded_codec[enc_index] == AV_CODEC_ID_NONE ||
+    int numpacks   = (subid[1] >> 0) & 0xf;
+    int pno1       = (subid[1] >> 4) & 0xf;
+    int pno3       = (subid[2] >> 0) & 0xf;
+    int pno2       = (subid[2] >> 4) & 0xf;
+    int pno = (pno1 << 8) | (pno2 << 4) | pno3;
+    int encoded_size = encoded_samples[rate_index] * encoded_samples_mul[trackpitch] * encoded_chans[chan_index] * encoded_quantization[enc_index] / 8;
+  
+    if (dataid != 0 ||
+        numpacks > 7 ||
+        pno == 0 ||
         encoded_chans[chan_index] == 0 ||
-        encoded_rate[rate_index] == 0)
+        encoded_samples[rate_index] == 0 ||
+        fmtid != 0 ||
+        encoded_samples_mul[trackpitch] == 0 ||
+        encoded_quantization[enc_index] == 0 ||
+        encoded_size > DAT_OFFSET)
         return 0;
 
     return 1;
@@ -62,7 +77,7 @@ static int read_probe(const AVProbeData *p)
 
         score += ret;
         if (ret == 0)
-            break;
+            return 0;
     }
 
     return FFMIN(score, AVPROBE_SCORE_MAX);
@@ -82,21 +97,28 @@ static int parse_frame(uint8_t *frame, AVCodecParameters *par)
     uint8_t *mainid = subid+4;
     int chan_index = (mainid[0] >> 0) & 0x3;
     int rate_index = (mainid[0] >> 2) & 0x3;
+    int fmtid      = (mainid[0] >> 6) & 0x3;
+    int trackpitch = (mainid[1] >> 2) & 0x3;
     int enc_index  = (mainid[1] >> 6) & 0x3;
     int dataid     = (subid[0] >> 0) & 0xf;
+    int encoded_size = encoded_samples[rate_index] * encoded_samples_mul[trackpitch] * encoded_chans[chan_index] * encoded_quantization[enc_index] / 8;
 
     par->codec_type = AVMEDIA_TYPE_AUDIO;
     par->codec_id = encoded_codec[enc_index];
     av_channel_layout_default(&par->ch_layout, encoded_chans[chan_index]);
-    par->sample_rate = encoded_rate[rate_index];
-    par->bit_rate = (8LL * DAT_PACKET_SIZE * par->sample_rate) / FFMAX(1, av_get_audio_frame_duration2(par, encoded_size[rate_index]));
+    par->sample_rate = encoded_samples[rate_index] * 100 / 3;
+    par->bit_rate = (8LL * DAT_PACKET_SIZE * par->sample_rate) / FFMAX(1, av_get_audio_frame_duration2(par, encoded_size));
 
-    if (dataid != 0 || par->codec_id == AV_CODEC_ID_NONE ||
-        par->ch_layout.nb_channels <= 0 ||
-        par->sample_rate <= 0)
+    if (dataid != 0 ||
+        par->ch_layout.nb_channels == 0 ||
+        par->sample_rate == 0 ||
+        fmtid != 0 ||
+        encoded_samples_mul[trackpitch] == 0 ||
+        encoded_quantization[enc_index] == 0 ||
+        encoded_size > DAT_OFFSET)
         return AVERROR_INVALIDDATA;
 
-    return encoded_size[rate_index];
+    return encoded_size;
 }
 
 static int read_packet(AVFormatContext *s, AVPacket *pkt)
