@@ -101,7 +101,10 @@ static int parse_frame(uint8_t *frame, AVCodecParameters *par)
     int trackpitch = (mainid[1] >> 2) & 0x3;
     int enc_index  = (mainid[1] >> 6) & 0x3;
     int dataid     = (subid[0] >> 0) & 0xf;
-    int encoded_size = encoded_samples[rate_index] * encoded_samples_mul[trackpitch] * encoded_chans[chan_index] * encoded_quantization[enc_index] / 8;
+    int encoded_size = 0;
+    if (chan_index == 0 && rate_index == 2 && trackpitch == 0)
+        trackpitch = 1; /* Only 32kHz 4-ch normal or 32kHz 2-ch wide are known to exist, forcing 32kHz 2-ch wide in case of non expected 32kHz 2ch normal */
+    encoded_size = encoded_samples[rate_index] * encoded_samples_mul[trackpitch] * encoded_chans[chan_index] * encoded_quantization[enc_index] / 8;
 
     par->codec_type = AVMEDIA_TYPE_AUDIO;
     par->codec_id = encoded_codec[enc_index];
